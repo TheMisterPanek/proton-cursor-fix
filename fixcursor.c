@@ -1,48 +1,27 @@
 #define _GNU_SOURCE
 #include <X11/Xlib.h>
-#include <X11/cursorfont.h>
+#include <X11/extensions/Xrender.h>
 #include <dlfcn.h>
 
-#define MAXB 256
-#define MAXD 16
-static Cursor blank[MAXB];
-static int nblank;
-static Display *dpys[MAXD];
-static Cursor arrows[MAXD];
-static int ndpy;
+#define FAKE_CURSOR ((Cursor)1)
 
-Cursor XCreatePixmapCursor(Display *d, Pixmap src, Pixmap mask, XColor *fg, XColor *bg,
-                           unsigned int x, unsigned int y)
+Cursor XRenderCreateCursor(Display *d, Picture p, unsigned int x, unsigned int y)
 {
-    static Cursor (*real)(Display *, Pixmap, Pixmap, XColor *, XColor *, unsigned int, unsigned int);
-    if (!real) real = dlsym(RTLD_NEXT, "XCreatePixmapCursor");
-    Cursor c = real(d, src, mask, fg, bg, x, y);
-    if (nblank < MAXB) blank[nblank++] = c;
-    return c;
-}
-
-static int is_blank(Cursor c)
-{
-    for (int k = 0; k < nblank; k++) if (blank[k] == c) return 1;
-    return 0;
-}
-
-static Cursor arrow_for(Display *d)
-{
-    for (int k = 0; k < ndpy; k++) if (dpys[k] == d) return arrows[k];
-    if (ndpy >= MAXD) return None;
-    dpys[ndpy] = d;
-    arrows[ndpy] = XCreateFontCursor(d, XC_left_ptr);
-    return arrows[ndpy++];
+    return FAKE_CURSOR;
 }
 
 int XDefineCursor(Display *d, Window w, Cursor c)
 {
     static int (*real)(Display *, Window, Cursor);
     if (!real) real = dlsym(RTLD_NEXT, "XDefineCursor");
-    if (c != None && !is_blank(c)) {
-        Cursor a = arrow_for(d);
-        if (a != None) c = a;
-    }
+    if (c == FAKE_CURSOR) c = None;
     return real(d, w, c);
+}
+
+int XFreeCursor(Display *d, Cursor c)
+{
+    static int (*real)(Display *, Cursor);
+    if (!real) real = dlsym(RTLD_NEXT, "XFreeCursor");
+    if (c == FAKE_CURSOR) return 0;
+    return real(d, c);
 }

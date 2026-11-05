@@ -4,11 +4,12 @@ A tiny `LD_PRELOAD` library for Linux / Proton games (specifically tested with *
 
 ## How it works
 
-When a Windows game running under Wine/Proton loads a custom `.cur` file and calls `SetCursor`, `winex11.drv` creates an X11 cursor and applies it to the game window via `XDefineCursor`. If the cursor texture is all-transparent, the cursor becomes invisible while mouse clicks still register normally.
+When a Windows game running under Wine/Proton loads a custom ARGB `.cur` file and calls `SetCursor`, `winex11.drv` creates an XRender ARGB cursor via `XRenderCreateCursor` and applies it to the game window via `XDefineCursor`. Meanwhile, Wine's internal monochrome "blank" cursor (used when the game intentionally hides the cursor via `ShowCursor(0)` during gameplay/camera movement) is created via `XCreatePixmapCursor`.
 
-`fixcursor.so` intercepts two Xlib functions:
-1. **`XCreatePixmapCursor`**: Tracks Wine's internal monochrome "blank" cursor (which Wine uses when the game intentionally hides the cursor via `ShowCursor(0)` during gameplay/camera movement).
-2. **`XDefineCursor`**: Replaces any non-blank custom cursor with the standard X11 arrow (`XC_left_ptr`), while allowing Wine's intentional blank cursor to pass through untouched so the pointer still hides properly during gameplay.
+`fixcursor.so` intercepts three functions:
+1. **`XRenderCreateCursor`**: Returns a dummy handle (`FAKE_CURSOR`) instead of creating the broken transparent ARGB cursor.
+2. **`XDefineCursor`**: Replaces `FAKE_CURSOR` with `None` (so the window falls back to the standard desktop cursor), while allowing Wine's intentional monochrome blank cursor (`XCreatePixmapCursor`) to pass through untouched so the pointer still hides properly during gameplay.
+3. **`XFreeCursor`**: Safely ignores `FAKE_CURSOR` on cleanup.
 
 ---
 
@@ -23,24 +24,24 @@ Works on any 64-bit Linux distribution and **Steam Deck (SteamOS)**.
    ```
 3. Launch the game.
 
-*(Note: Because this replaces custom hardware cursors with the standard X11 arrow, any custom in-game hardware cursors such as custom crosshairs drawn via X11 will also appear as an arrow).*
+*(Note: Because this replaces custom ARGB hardware cursors with the default desktop cursor, any custom in-game ARGB hardware cursors such as custom crosshairs drawn via XRender will also appear as your system default pointer).*
 
 ---
 
 ## Building from Source
 
-The library is ~45 lines of standard C and only depends on `libdl` and `libX11`.
+The library is 27 lines of standard C and only requires X11/Xrender headers at compile time and `libdl` at link time.
 
 ### Prerequisites
-* **Arch / CachyOS:** `sudo pacman -S gcc libx11`
-* **Ubuntu / Debian:** `sudo apt install gcc libx11-dev`
-* **Fedora:** `sudo dnf install gcc libX11-devel`
+* **Arch / CachyOS:** `sudo pacman -S gcc libx11 libxrender`
+* **Ubuntu / Debian:** `sudo apt install gcc libx11-dev libxrender-dev`
+* **Fedora:** `sudo dnf install gcc libX11-devel libXrender-devel`
 
 ### Compile
 ```sh
 git clone https://github.com/TheMisterPanek/proton-cursor-fix.git
 cd proton-cursor-fix
-gcc -shared -fPIC -O2 -o fixcursor.so fixcursor.c -ldl -lX11
+gcc -shared -fPIC -O2 -o fixcursor.so fixcursor.c -ldl
 ```
 
 Then point `LD_PRELOAD` in Steam Launch Options to your compiled `fixcursor.so`:
@@ -52,4 +53,4 @@ LD_PRELOAD=/path/to/fixcursor.so %command%
 
 ## License
 
-MIT / Public Domain (Unlicense). Feel free to use, modify, and redistribute.
+[MIT License](LICENSE). Feel free to use, modify, and redistribute.
